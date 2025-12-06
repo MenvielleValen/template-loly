@@ -181,6 +181,20 @@ export default function WhiteboardDemoPage() {
     };
   };
 
+  const getTouchPos = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0] || e.changedTouches[0];
+    if (!touch) return null;
+
+    return {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top,
+    };
+  };
+
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!registered) return;
 
@@ -233,6 +247,75 @@ export default function WhiteboardDemoPage() {
 
   const handleMouseUp = () => {
     if (!isDrawing || !registered || !socket) return;
+
+    setIsDrawing(false);
+
+    // Send path to server
+    if (currentPathRef.current.length > 0) {
+      socket.emit("draw", {
+        points: currentPathRef.current,
+        color,
+        lineWidth,
+      });
+      currentPathRef.current = [];
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!registered) return;
+    e.preventDefault(); // Prevent scrolling
+
+    setIsDrawing(true);
+    const pos = getTouchPos(e);
+    if (pos) {
+      currentPathRef.current = [{
+        x: pos.x,
+        y: pos.y,
+        color,
+        lineWidth,
+      }];
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !registered) return;
+    e.preventDefault(); // Prevent scrolling
+
+    const pos = getTouchPos(e);
+    if (pos) {
+      const point = {
+        x: pos.x,
+        y: pos.y,
+        color,
+        lineWidth,
+      };
+
+      currentPathRef.current.push(point);
+
+      // Draw locally
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const lastPoint = currentPathRef.current[currentPathRef.current.length - 2];
+      if (lastPoint) {
+        ctx.beginPath();
+        ctx.moveTo(lastPoint.x, lastPoint.y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.lineTo(point.x, point.y);
+        ctx.stroke();
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !registered || !socket) return;
+    e.preventDefault();
 
     setIsDrawing(false);
 
@@ -347,6 +430,10 @@ export default function WhiteboardDemoPage() {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
             className="w-full cursor-crosshair rounded border border-border bg-white"
             style={{ height: "600px", touchAction: "none" }}
           />
